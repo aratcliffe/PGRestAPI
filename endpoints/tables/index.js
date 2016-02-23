@@ -638,7 +638,14 @@ exports.app = function (passport) {
         this(null, this.returnfields);
       }
 
-    }, function (err, fieldList) {
+    }, function (err) {
+        var query = 'SELECT COUNT(*) AS total_count FROM ' + common.escapePostGresColumns([this.args.table]);
+        common.executePgQuery(query, this);
+    }, function (err, result) {
+        this.totalCount = result.rows[0].total_count;
+        
+        var fieldList = this.returnfields;
+        
       //Coming from createSelectAllStatementWithExcept
       //build SQL query
       if (common.isValidSQL(fieldList) && common.isValidSQL(this.args.geometryStatement) && common.isValidSQL(this.args.table) && common.isValidSQL(this.args.where) && common.isValidSQL(this.args.groupby)) {
@@ -661,8 +668,7 @@ exports.app = function (passport) {
         common.respond(this.req, this.res, this.args);
         return;
       }
-    }, function (err, result) {
-
+    }, function (err, result) {        
       var flo = this;
       //Save for closure //TODO - Use _self
 
@@ -688,8 +694,9 @@ exports.app = function (passport) {
           //For now - hard coded.  Create new dynamic endpoint for this GeoJSON
           //nodetiles.createDynamicGeoJSONEndpoint(features, args.table, "4326", "style.mss");
         } else if (this.args.format && this.args.format.toLowerCase() == "geojson" || this.args.format && this.args.format.toLowerCase() == "json") {
+
           //Respond with JSON
-          this.args.featureCollection = common.formatters.geoJSONFormatter(result.rows, common.unEscapePostGresColumns(this.args.geom_fields_array), common.unEscapePostGresColumns(this.args.geom_envelope_fields));
+            this.args.featureCollection = common.formatters.geoJSONFormatter(result.rows, common.unEscapePostGresColumns(this.args.geom_fields_array), common.unEscapePostGresColumns(this.args.geom_envelope_fields), this.totalCount);
           flo();
           //For now - hard coded.  Create new dynamic endpoint for this GeoJSON
           //nodetiles.createDynamicGeoJSONEndpoint(features, args.table, "4326", "style.mss");

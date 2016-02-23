@@ -382,7 +382,7 @@ var getFilesRecursively = common.getFilesRecursively = function (dir, done) {
 
 
 ////Take in results object, return GeoJSON (if there is geometry)
-common.formatters.geoJSONFormatter = function (rows, geom_fields_array, geom_extent_array) {
+common.formatters.geoJSONFormatter = function (rows, geom_fields_array, geom_extent_array, total_count) {
     //Take in results object, return GeoJSON
     if (!geom_fields_array || geom_fields_array.length == 0) {
         //See if the extent array is populated
@@ -396,7 +396,7 @@ common.formatters.geoJSONFormatter = function (rows, geom_fields_array, geom_ext
     }
 
     //Loop thru results
-    var featureCollection = { "type": "FeatureCollection", "features": [] };
+    var featureCollection = { "type": "FeatureCollection", "features": [], "properties": {"total_count": total_count} };
 
     rows.forEach(function (row) {
 
