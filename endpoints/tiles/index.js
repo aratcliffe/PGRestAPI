@@ -253,8 +253,7 @@ exports.app = function (passport) {
 
   //Load PG Tables
   //look thru all tables in PostGres with a geometry column, spin up dynamic map tile services for each one
-  //common.vacuumAnalyzeAll();
-
+    //common.vacuumAnalyzeAll();
   common.findSpatialTables(app, function (error, tables) {
     if (error) {
       console.log(error);
@@ -262,43 +261,99 @@ exports.app = function (passport) {
       if (tables) {
         Object.keys(tables).forEach(function (key) {
           var item = tables[key];
-
-          (function (item) {
-
-            var tileSettings = { mapnik_datasource: {}, tileSize: { height: 256, width: 256}, routeProperties: { name: "", source: "", geom_field: "", srid: "", cartoFile: "" }};
-
-            tileSettings.mapnik_datasource = {
-              'host': settings.pg.server,
-              'port': settings.pg.port,
-              'dbname': settings.pg.database,
-              //'table': item.table,
-              'table': ('(SELECT ' + item.geometry_column + ' from "' + item.table + '"' + ') as "' + item.table + '"'),
-
-              'user': settings.pg.username,
-              'password': settings.pg.password,
-              'type': 'postgis',
-              'estimate_extent': 'false',
-              'geometry_field': item.geometry_column,
-              'srid': item.srid,
-              'geometry_type': item.type
-            };
-            tileSettings.routeProperties.name = key;
-            tileSettings.routeProperties.table = item.table;
-            tileSettings.routeProperties.srid = item.srid;
-            tileSettings.routeProperties.cartoFile = "";
-            tileSettings.routeProperties.source = "postgis";
-            tileSettings.routeProperties.geom_field = item.geometry_column;
-            tileSettings.routeProperties.defaultStyle = "";//The name of the style inside of the xml file
-
-            createMultiTileRoute(app, tileSettings, PGTileStats.MultiTiles);
-            createSingleTileRoute(app, tileSettings, PGTileStats.SingleTiles);
-            createVectorTileRoute(app, tileSettings, PGTileStats.VectorTiles);
-
-          })(item);
+          createRoutesForTable(app, key, item);
         });
       }
     }
   });
+
+  function createRoutesForTable(app, key, item) {
+    var tileSettings = { routeProperties: {} };
+
+    tileSettings.mapnik_datasource = {
+      'host': settings.pg.server,
+      'port': settings.pg.port,
+      'dbname': settings.pg.database,
+      //'table': item.table,
+      'table': ('(SELECT ' + item.geometry_column + ' from "' + item.table + '"' + ') as "' + item.table + '"'),
+
+      'user': settings.pg.username,
+      'password': settings.pg.password,
+      'type': 'postgis',
+      'estimate_extent': 'false',
+      'geometry_field': item.geometry_column,
+      'srid': item.srid,
+      'geometry_type': item.type
+    };
+    tileSettings.routeProperties.name = key;
+    tileSettings.routeProperties.table = item.table;
+    tileSettings.routeProperties.srid = item.srid;
+    tileSettings.routeProperties.cartoFile = "";
+    tileSettings.routeProperties.source = "postgis";
+    tileSettings.routeProperties.geom_field = item.geometry_column;
+    tileSettings.routeProperties.defaultStyle = "";//The name of the style inside of the xml file
+
+    createMultiTileRoute(app, tileSettings, PGTileStats.MultiTiles);
+    createSingleTileRoute(app, tileSettings, PGTileStats.SingleTiles);
+    createVectorTileRoute(app, tileSettings, PGTileStats.VectorTiles);
+
+    //Allow deleting the routes for this table
+    var tableRoute = '/services/postgis/' + item.table;
+    app.delete(tableRoute, function (req, res) {
+      var testpath = tableRoute + '/';
+      Object.keys(app.routes).forEach(function (key) {
+        var routes = app.routes[key];
+        app.routes[key] = routes.filter(function (route) {
+          return !(route.path.substr(0, testpath.length) == testpath || route.path == tableRoute);
+        });
+      });
+      res.send(200);
+    });
+  }
+
+  //Create a route to allow new table routes to be created for PostGIS tables created after startup
+  app.post('/services/postgis', function (req, res) {
+    var name = req.body.name;
+
+    //Check if there is already a route for the table
+    var testpath = '/services/postgis/' + name + '/';
+    for (var i = 0; i < app.routes.get.length; i++) {
+      var path = app.routes.get[i].path;
+      if (path.substr(0, testpath.length) == testpath) {
+        return res.send(400, {
+          error: 'Routes for table "' + name + '" already exist'
+        });
+      }
+    }
+
+    //Find all spatial tables
+    common.findSpatialTables(app, function (error, tables) {
+      if (error) {
+        console.log(error);
+        res.send(500, error);
+      } else {
+        if (tables) {
+          var added = false;
+          Object.keys(tables).forEach(function (key) {
+            var item = tables[key];
+            //The table exists so we can create routes for it
+            if (item.table == name) {
+              createRoutesForTable(app, key, item);
+              added = true;
+            }
+          });
+
+          if (added) {
+            res.header('Location', '/services/postigs/' + name);
+            return res.send(201);
+          }
+        }
+        res.send(400, {
+          error: 'Table "' + name + '" does not exist'
+        });
+      } 
+    });
+  });    
 
   var sessionStart = new Date().toLocaleString();
 
